@@ -3,7 +3,7 @@
 A browser-based tool that builds multisampler presets for the Teenage Engineering OP-XY
 (firmware 1.2.0). It runs entirely client-side — nothing is uploaded anywhere.
 
-**Live:** https://dodlum.github.io/OPXY_multisample/
+**Live:** https://dodlum.github.io/OPXY_Multisample/
 
 Two ways in, one processing pipeline out:
 
