@@ -6,7 +6,7 @@ loop points, normalises it, and writes a finished `.preset` folder you drop stra
 device. Or hand it a folder of samples and it does the same job without the sampling. Free, open
 source, runs entirely in your browser — nothing is uploaded anywhere.
 
-**Use it here:** https://dodlum.github.io/OPXY_Multisample/
+**Use it here:** https://opxy.davidodlum.com (also at https://dodlum.github.io/OPXY_Multisample/)
 
 ![multisample builder — light theme](docs/screenshot-light.png)
 
