@@ -55,21 +55,36 @@ export function noteOn(zones, note, { releaseSec = 0.15, attackSec = 0, offsetFr
   return zone;
 }
 
-export function noteOff(note, releaseSec) {
+// releaseSec: fade length, or null to let the sample play out naturally.
+// exitLoop: leave the loop on release and play the tail ("loop until release"),
+// otherwise keep looping and rely on the fade ("loop forever").
+export function noteOff(note, releaseSec, { exitLoop = true } = {}) {
   const v = active.get(note);
   if (!v) return;
   const ac = audioContext();
-  const rel = releaseSec ?? v.releaseSec;
   const t = ac.currentTime;
+  const rel = releaseSec === undefined ? v.releaseSec : releaseSec;
+  if (v.src.loop && exitLoop) {
+    v.src.loop = false;             // continues from the current position to the end
+    if (rel !== null) fadeOut(v, t, rel);
+    else v.src.onended = () => { if (active.get(note)?.src === v.src) active.delete(note); };
+  } else if (rel === null && !v.src.loop) {
+    // one-shot: let it finish
+  } else {
+    fadeOut(v, t, rel ?? 0.15);
+  }
+  if (rel !== null || v.src.loop) active.delete(note);
+}
+
+function fadeOut(v, t, rel) {
   v.gain.gain.cancelScheduledValues(t);
   v.gain.gain.setValueAtTime(v.gain.gain.value, t);
   v.gain.gain.linearRampToValueAtTime(0, t + Math.max(0.005, rel));
   v.src.stop(t + Math.max(0.005, rel) + 0.01);
-  active.delete(note);
 }
 
 export function allNotesOff() {
-  for (const note of [...active.keys()]) noteOff(note, 0.02);
+  for (const note of [...active.keys()]) noteOff(note, 0.02, { exitLoop: false });
 }
 
 // Current playback frame in the zone for a playhead, or null.

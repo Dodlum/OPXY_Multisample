@@ -625,7 +625,9 @@ function pressNote(midi) {
 }
 function releaseNote(midi) {
   held.delete(midi);
-  noteOff(midi);
+  // Mirror the device: leave the loop and play the tail, unless "loop until
+  // release only" is on (loop forever), in which case keep looping and fade.
+  noteOff(midi, opts.ampRelease > 0 ? 0.05 + opts.ampRelease * 4 : null, { exitLoop: !opts.onRelease });
   renderKeyboard();
   highlightSlot(midi, false);
 }
