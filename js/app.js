@@ -12,7 +12,7 @@ import { detectPitch } from './pitch.js';
 import { chopBySilence } from './chop.js';
 import { buildPatch, MAX_ZONES, MAX_SECONDS, zoneForNote } from './patch.js';
 import { buildZip } from './zip.js';
-import { noteOn, noteOff, allNotesOff, playheadFor } from './player.js';
+import { noteOn, noteOff, allNotesOff, playheadFor, isRinging } from './player.js';
 import { initAutoSample } from './autosample.js';
 
 // ---------- state ----------
@@ -476,8 +476,7 @@ const editor = new LoopEditor({
   onSeek: (frame) => {
     const z = selectedZone();
     if (!z?.processed) return;
-    noteOn(state.zones, z.keycenter, { releaseSec: 0.2, offsetFrames: frame });
-    animatePlayhead();
+    startAudition(z, frame);
   },
 });
 $('#zoom-fit').addEventListener('click', () => { editor.fit(); renderDetail(); });
@@ -534,6 +533,7 @@ $('#loop-apply-all').addEventListener('click', () => {
 
 function renderDetail() {
   const z = selectedZone();
+  if (auditioning && (!z || auditioning.zoneId !== z.id)) stopAudition();
   detail.panel.classList.toggle('hidden', !z);
   if (!z || !z.processed) return;
   const p = z.processed;
@@ -579,7 +579,29 @@ $('#loop-refind').addEventListener('click', () => {
   render();
 });
 $('#remove').addEventListener('click', () => { const z = selectedZone(); if (z) removeZone(z.id); });
-$('#audition').addEventListener('click', () => { const z = selectedZone(); if (z) { noteOn(state.zones, z.keycenter, { releaseSec: 0.2 }); } });
+// The play button latches: play → "stop" → release like a key (leave the loop, play the tail).
+let auditioning = null; // { zoneId, note }
+function releaseFor() {
+  return opts.ampRelease > 0 ? 0.05 + opts.ampRelease * 4 : null;
+}
+function stopAudition() {
+  if (!auditioning) return;
+  noteOff(auditioning.note, releaseFor(), { exitLoop: !opts.onRelease });
+  auditioning = null;
+  $('#audition').textContent = 'play';
+}
+function startAudition(z, offsetFrames = 0) {
+  stopAudition();
+  noteOn(state.zones, z.keycenter, { attackSec: opts.ampAttack * 2, offsetFrames });
+  auditioning = { zoneId: z.id, note: z.keycenter };
+  $('#audition').textContent = 'stop';
+  animatePlayhead();
+}
+$('#audition').addEventListener('click', () => {
+  const z = selectedZone();
+  if (!z) return;
+  if (auditioning && auditioning.zoneId === z.id) stopAudition(); else startAudition(z);
+});
 
 // ---------- keyboard ----------
 
@@ -645,8 +667,8 @@ function animatePlayhead() {
     if (z && z.processed) {
       const ph = playheadFor(z);
       editor.draw(ph);
-      if (ph === null && held.size === 0) { playheadRaf = null; return; }
-    } else if (held.size === 0) { playheadRaf = null; return; }
+      if (ph === null && held.size === 0 && !auditioning) { playheadRaf = null; return; }
+    } else if (held.size === 0 && !auditioning) { playheadRaf = null; return; }
     playheadRaf = requestAnimationFrame(tick);
   };
   playheadRaf = requestAnimationFrame(tick);
@@ -655,6 +677,7 @@ window.addEventListener('keydown', (e) => {
   if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
   const tag = document.activeElement?.tagName;
   if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+  if (e.key === 'Escape') { stopAudition(); held.clear(); allNotesOff(); renderKeyboard(); return; }
   const k = e.key.toLowerCase();
   if (k === 'z') { state.octave = Math.max(-2, state.octave - 1); renderKeyboard(); return; }
   if (k === 'x') { state.octave = Math.min(7, state.octave + 1); renderKeyboard(); return; }
@@ -664,7 +687,8 @@ window.addEventListener('keyup', (e) => {
   const k = e.key.toLowerCase();
   if (k in KEYMAP) releaseNote(keyboardBase() + KEYMAP[k]);
 });
-window.addEventListener('blur', () => { held.clear(); allNotesOff(); renderKeyboard(); });
+window.addEventListener('blur', () => { held.clear(); stopAudition(); allNotesOff(); renderKeyboard(); });
+setInterval(() => { if (auditioning && playheadFor(selectedZone() || {}) === null && !isRinging(auditioning.note)) { auditioning = null; $('#audition').textContent = 'play'; } }, 250);
 
 // ---------- export ----------
 

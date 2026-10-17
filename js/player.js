@@ -74,6 +74,7 @@ export function noteOff(note, releaseSec, { exitLoop = true } = {}) {
     fadeOut(v, t, rel ?? 0.15);
   }
   if (rel !== null || v.src.loop) active.delete(note);
+  else v.src.onended = () => { if (active.get(note)?.src === v.src) active.delete(note); };
 }
 
 function fadeOut(v, t, rel) {
@@ -105,3 +106,5 @@ export function playheadFor(zone) {
   }
   return null;
 }
+
+export function isRinging(note) { return active.has(note); }
