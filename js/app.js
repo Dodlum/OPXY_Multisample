@@ -612,8 +612,14 @@ function renderKeyboard() {
 function pressNote(midi) {
   if (held.has(midi)) return;
   held.add(midi);
-  noteOn(state.zones, midi, { releaseSec: 0.05 + opts.ampRelease * 2, attackSec: opts.ampAttack * 2 });
-  renderKeyboard();
+  const zone = noteOn(state.zones, midi, { releaseSec: 0.05 + opts.ampRelease * 2, attackSec: opts.ampAttack * 2 });
+  // The keyboard follows into the editor: the zone that plays becomes the selected one.
+  if (zone && zone.id !== state.selectedId) {
+    state.selectedId = zone.id;
+    render();
+  } else {
+    renderKeyboard();
+  }
   highlightSlot(midi, true);
   animatePlayhead();
 }
