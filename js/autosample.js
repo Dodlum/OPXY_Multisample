@@ -219,11 +219,19 @@ export function initAutoSample(api) {
     ui.run.disabled = !ready() || n === 0 || problems.length > 0;
   }
 
-  ui.start.addEventListener('input', renderPlan);
+  // Changing the step (or start, or snap) fills the end note in for exactly 24 zones.
+  function autoEnd() {
+    const start = api.parseNote(ui.start.value.trim());
+    if (start === null) return;
+    const first = plannedNotes({ start, end: 127, step: cfg.step, anchorToC: cfg.anchorC })[0];
+    if (first === undefined) return;
+    ui.end.value = api.noteName(Math.min(127, first + (MAX_ZONES - 1) * cfg.step));
+  }
+  ui.start.addEventListener('input', () => { autoEnd(); renderPlan(); });
   ui.end.addEventListener('input', renderPlan);
-  ui.step.addEventListener('input', () => { cfg.step = Number(ui.step.value); ui.stepVal.textContent = String(cfg.step); renderPlan(); });
+  ui.step.addEventListener('input', () => { cfg.step = Number(ui.step.value); ui.stepVal.textContent = String(cfg.step); autoEnd(); renderPlan(); });
   ui.hold.addEventListener('input', () => { cfg.hold = Number(ui.hold.value); ui.holdVal.textContent = `${cfg.hold.toFixed(1)} s`; renderPlan(); });
-  ui.anchorC.addEventListener('change', () => { cfg.anchorC = ui.anchorC.checked; renderPlan(); });
+  ui.anchorC.addEventListener('change', () => { cfg.anchorC = ui.anchorC.checked; autoEnd(); renderPlan(); });
   $('#convention').addEventListener('change', renderPlan);
 
   // ----- run -----
@@ -285,11 +293,12 @@ export function initAutoSample(api) {
       running = false;
       ui.run.classList.remove('hidden');
       ui.abort.classList.add('hidden');
+      ui.abort.disabled = false;
       updateReady();
     }
   });
 
-  ui.abort.addEventListener('click', () => { sampler?.abort(); setStatus(ui.runStatus, 'aborting…'); });
+  ui.abort.addEventListener('click', () => { sampler?.abort(); ui.abort.disabled = true; setStatus(ui.runStatus, 'aborting…'); });
 
   // Re-record a single zone with the current settings.
   ui.rerecord.addEventListener('click', async () => {

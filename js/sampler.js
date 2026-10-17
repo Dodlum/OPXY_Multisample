@@ -56,6 +56,15 @@ export class AutoSampler {
     this.recorder = recorder;
     this.pick = pick;
     this.aborted = false;
+    this._wake = null;
+  }
+
+  // A wait that abort() can cut short.
+  _wait(ms) {
+    return new Promise((resolve) => {
+      const t = setTimeout(() => { this._wake = null; resolve(); }, ms);
+      this._wake = () => { clearTimeout(t); this._wake = null; resolve(); };
+    });
   }
 
   // Play one note, record, and measure latency / release / noise floor.
@@ -63,11 +72,12 @@ export class AutoSampler {
   async testNote({ note = 60, velocity = 100, holdSec = 1, maxTailSec = 12, onsetThresholdDb = -40 }) {
     const rec = this.recorder;
     const sr = rec.sampleRate;
+    this.aborted = false;
     rec.start();
-    await wait(300);                          // noise-floor window
+    await this._wait(300);                    // noise-floor window
     const noteOnFrame = rec.nowFrame;
     this.midi.noteOn(note, velocity);
-    await wait(holdSec * 1000);
+    await this._wait(holdSec * 1000);
     const noteOffFrame = rec.nowFrame;
     this.midi.noteOff(note);
 
@@ -143,10 +153,12 @@ export class AutoSampler {
         onProgress?.({ index: i, note, phase: 'playing' });
         const noteOnFrame = rec.nowFrame;
         this.midi.noteOn(note, velocity);
-        await wait(holdSec * 1000);
+        await this._wait(holdSec * 1000);
         this.midi.noteOff(note);
+        if (this.aborted) break;
         onProgress?.({ index: i, note, phase: 'release' });
-        await wait((latencyMs + releaseSec * 1000) + 150);
+        await this._wait((latencyMs + releaseSec * 1000) + 150);
+        if (this.aborted) break;
         const from = Math.max(0, noteOnFrame - Math.round((preRollMs / 1000) * sr));
         const to = rec.nowFrame;
         const channels = rec.slice(from, to, this.pick);
@@ -166,5 +178,6 @@ export class AutoSampler {
   abort() {
     this.aborted = true;
     this.midi.allNotesOff();
+    this._wake?.();
   }
 }
