@@ -5,7 +5,9 @@ import { VERSION } from './version.js';
 import { $, $$, el, formatBytes, formatSeconds, drawWaveform, download } from './ui.js';
 import { setMiddleCOctave, midiToName, nameToMidi, noteFromFilename, sanitiseName } from './notes.js';
 import { decodeFile, toMono, resample, encodeWav } from './audio.js';
-import { processNote, findLoop } from './process.js';
+import { processNote, nearestZeroCrossing, retune } from './process.js';
+import { LoopEditor } from './loopeditor.js';
+import { saveSession, loadSession, clearSession } from './session.js';
 import { detectPitch } from './pitch.js';
 import { chopBySilence } from './chop.js';
 import { buildPatch, MAX_ZONES, MAX_SECONDS, zoneForNote } from './patch.js';
@@ -32,6 +34,7 @@ const opts = {
   rate: 44100, mono: false,
   ampAttack: 0, ampRelease: 0,
   extendTop: true,
+  retune: false,
   longMode: false, longStart: 'c1', longStep: 3, chopThr: -45, chopGap: 150,
 };
 
@@ -82,6 +85,7 @@ bindRange('#opt-fade-ms', 'fadeOutMs', (v) => `${v} ms`);
 bindRange('#opt-att', 'ampAttack', (v) => `${v} %`, { scale: 0.01 });
 bindRange('#opt-rel', 'ampRelease', (v) => `${v} %`, { scale: 0.01 });
 bindCheck('#opt-extend', 'extendTop', false);
+bindCheck('#opt-retune', 'retune');
 bindCheck('#opt-mono', 'mono', false);
 $('#opt-rate').addEventListener('change', (e) => { opts.rate = Number(e.target.value); render(); });
 
@@ -109,7 +113,7 @@ $('#long-start').addEventListener('input', (e) => { opts.longStart = e.target.va
 bindRange('#long-step', 'longStep', (v) => `${v}`);
 bindRange('#chop-thr', 'chopThr', (v) => `${v} dB`);
 bindRange('#chop-gap', 'chopGap', (v) => `${v} ms`);
-$('#preset-name').addEventListener('input', render);
+$('#preset-name').addEventListener('input', () => { markDirty(); render(); });
 
 // ---------- loading files ----------
 
@@ -254,12 +258,16 @@ function addZone({ name, raw, keycenter, noteSource, hints = null, origin = 'imp
     noteSource,
     hints,
     origin,
+    detected: null,       // { midi, cents, hz, confidence } from detect pitch
+    fadeMs: null,         // per-zone fade override (ms), null = global setting
+    window: null,         // loop search window in processed frames, for display
     processed: null,
     loopEnabled: opts.loop,
     loopOverride: null,   // { start, end } set by hand on the detail panel
   };
   state.zones.push(zone);
   if (state.selectedId === null) state.selectedId = zone.id;
+  markDirty();
   return zone;
 }
 
@@ -269,12 +277,19 @@ function sortedZones() {
 
 function processZone(zone) {
   const h = zone.hints;
+  let raw = zone.raw;
+  if (opts.retune && zone.detected?.cents) {
+    if (!zone._retuned || zone._retuned.cents !== zone.detected.cents || zone._retuned.src !== zone.raw) {
+      zone._retuned = { cents: zone.detected.cents, src: zone.raw, channels: retune(zone.raw.channels, -zone.detected.cents) };
+    }
+    raw = { channels: zone._retuned.channels, sampleRate: zone.raw.sampleRate };
+  }
   // Auto-sampled zones know where the note starts and how long it was held,
   // so the loop window is a fraction of the held part rather than of the file.
   const loopSearch = h
     ? { fromFrame: h.onsetFrame + Math.round(h.holdFrames * opts.winFrom), toFrame: h.onsetFrame + Math.round(h.holdFrames * opts.winTo) }
     : { fromFrac: opts.winFrom, toFrac: opts.winTo };
-  zone.processed = processNote(zone.raw, {
+  zone.processed = processNote(raw, {
     trim: opts.trim,
     thresholdDb: opts.thresholdDb,
     latencyFrames: h ? h.latencyFrames : 0,
@@ -283,15 +298,22 @@ function processZone(zone) {
     loopEnabled: opts.loop,
     loopSearch,
     cutAtLoopEnd: opts.cutAtLoopEnd && zone.loopEnabled,
-    fadeOutMs: opts.fade ? opts.fadeOutMs : 0,
+    fadeOutMs: zone.fadeMs !== null ? zone.fadeMs : opts.fade ? opts.fadeOutMs : 0,
     maxSeconds: MAX_SECONDS,
   });
-  if (zone.loopOverride && zone.processed) {
-    const n = zone.processed.channels[0].length;
+  const n = zone.processed.channels[0].length;
+  if (zone.loopOverride) {
     zone.processed.loop = {
       start: Math.min(n - 2, zone.loopOverride.start),
       end: Math.min(n - 1, zone.loopOverride.end),
     };
+  }
+  // Search window in processed-frame terms, for the editor to draw and drag.
+  if (h) {
+    const onset = Math.max(0, h.onsetFrame - zone.processed.trimmedFrom);
+    zone.window = { start: Math.min(n - 1, onset + Math.round(h.holdFrames * opts.winFrom)), end: Math.min(n, onset + Math.round(h.holdFrames * opts.winTo)) };
+  } else {
+    zone.window = { start: Math.floor(n * opts.winFrom), end: Math.floor(n * opts.winTo) };
   }
   zone._buffer = null;
 }
@@ -303,11 +325,13 @@ function scheduleReprocess() {
 }
 function reprocessAll() {
   for (const z of state.zones) if (z.raw) processZone(z);
+  markDirty();
   render();
 }
 
 function removeZone(id) {
   state.zones = state.zones.filter((z) => z.id !== id);
+  markDirty();
   if (state.selectedId === id) state.selectedId = state.zones[0]?.id ?? null;
   render();
 }
@@ -320,10 +344,11 @@ function thinZones(target = MAX_ZONES) {
   for (let i = 0; i < target; i++) keep.add(Math.round((i * (sorted.length - 1)) / (target - 1)));
   state.zones = sorted.filter((_, i) => keep.has(i));
   if (!state.zones.find((z) => z.id === state.selectedId)) state.selectedId = state.zones[0]?.id ?? null;
+  markDirty();
   render();
 }
 $('#thin').addEventListener('click', () => thinZones());
-$('#clear').addEventListener('click', () => { allNotesOff(); state.zones = []; state.selectedId = null; render(); });
+$('#clear').addEventListener('click', () => { allNotesOff(); state.zones = []; state.selectedId = null; markDirty(); render(); });
 
 function checkZoneCount() {
   const n = state.zones.length;
@@ -388,7 +413,7 @@ function renderZoneList() {
         const v = e.target.value.trim();
         const midi = nameToMidi(v) ?? (/^\d{1,3}$/.test(v) && Number(v) <= 127 ? Number(v) : null);
         if (midi === null) { e.target.value = midiToName(z.keycenter); return; }
-        z.keycenter = midi; z.noteSource = 'you'; render();
+        z.keycenter = midi; z.noteSource = 'you'; markDirty(); render();
       },
     });
     const canvas = el('canvas');
@@ -403,16 +428,109 @@ function renderZoneList() {
       el('button', { class: 'icon', title: 'remove', onclick: () => removeZone(z.id) }, '×'),
     );
     list.append(row);
-    if (p) requestAnimationFrame(() => drawWaveform(canvas, p.channels, { loop: z.loopEnabled ? p.loop : null }));
+    if (p) requestAnimationFrame(() => drawWaveform(canvas, p.channels, { loop: z.loopEnabled ? p.loop : null, band: z.window }));
   });
 }
 
 const detail = {
   panel: $('#detail-panel'), wave: $('#wave'), title: $('#detail-title'),
   start: $('#loop-start'), end: $('#loop-end'), startVal: $('#loop-start-val'), endVal: $('#loop-end-val'),
-  on: $('#loop-on'),
+  on: $('#loop-on'), pitch: $('#pitch-val'), usePitch: $('#use-pitch'), fade: $('#zone-fade'), fadeVal: $('#fade-val'),
 };
 function selectedZone() { return state.zones.find((z) => z.id === state.selectedId) || null; }
+
+function setLoop(z, start, end) {
+  z.loopOverride = { start, end };
+  z.processed.loop = { start, end, score: null };
+  z._buffer = null;
+  markDirty();
+}
+
+const editor = new LoopEditor({
+  canvas: detail.wave,
+  splice: $('#splice'),
+  getZone: selectedZone,
+  onLoop: (start, end) => {
+    const z = selectedZone();
+    if (!z?.processed) return;
+    setLoop(z, start, end);
+    renderDetail();
+    renderZoneList();
+  },
+  onWindow: (a, b) => {
+    const z = selectedZone();
+    if (!z?.processed) return;
+    const n = z.processed.channels[0].length;
+    let from, to;
+    if (z.hints) {
+      const onset = Math.max(0, z.hints.onsetFrame - z.processed.trimmedFrom);
+      from = (a - onset) / z.hints.holdFrames; to = (b - onset) / z.hints.holdFrames;
+    } else {
+      from = a / n; to = b / n;
+    }
+    from = Math.max(0, Math.min(0.95, from)); to = Math.max(from + 0.05, Math.min(1, to));
+    winFrom.value = Math.round(from * 100); winTo.value = Math.round(to * 100);
+    updateWin();
+    scheduleReprocess();
+  },
+  onSeek: (frame) => {
+    const z = selectedZone();
+    if (!z?.processed) return;
+    noteOn(state.zones, z.keycenter, { releaseSec: 0.2, offsetFrames: frame });
+    animatePlayhead();
+  },
+});
+$('#zoom-fit').addEventListener('click', () => { editor.fit(); renderDetail(); });
+$('#zoom-loop').addEventListener('click', () => { editor.zoomToLoop(); renderDetail(); });
+$('#zoom-in').addEventListener('click', () => { editor.zoomBy(1.6); renderDetail(); });
+$('#zoom-out').addEventListener('click', () => { editor.zoomBy(1 / 1.6); renderDetail(); });
+
+function pitchLabel(d) {
+  if (!d) return 'not detected';
+  const sign = d.cents > 0 ? '+' : '';
+  return `${midiToName(d.midi)} ${sign}${d.cents} ¢ · ${d.hz.toFixed(1)} hz`;
+}
+function detectZone(z) {
+  if (!z?.processed) return;
+  const win = z.window || { start: 0, end: z.processed.channels[0].length };
+  const fromFrac = win.start / z.processed.channels[0].length;
+  z.detected = detectPitch(z.processed.channels, z.processed.sampleRate, { fromFrac, windowMs: 200 });
+  if (opts.retune) processZone(z);
+  markDirty();
+}
+$('#detect').addEventListener('click', () => { const z = selectedZone(); if (z) { detectZone(z); render(); } });
+$('#detect-all').addEventListener('click', () => { for (const z of state.zones) detectZone(z); render(); });
+detail.usePitch.addEventListener('click', () => {
+  const z = selectedZone();
+  if (!z?.detected) return;
+  z.keycenter = z.detected.midi; z.noteSource = 'pitch';
+  markDirty(); render();
+});
+detail.fade.addEventListener('change', () => {
+  const z = selectedZone();
+  if (!z) return;
+  const v = detail.fade.value.trim();
+  z.fadeMs = v === '' ? null : Math.max(0, Number(v) || 0);
+  processZone(z); markDirty(); render();
+});
+$('#loop-apply-all').addEventListener('click', () => {
+  const src = selectedZone();
+  const loop = src?.processed?.loop;
+  if (!loop || !src.window) return;
+  const span = Math.max(1, src.window.end - src.window.start);
+  const fs = (loop.start - src.window.start) / span, fe = (loop.end - src.window.start) / span;
+  for (const z of state.zones) {
+    if (z === src || !z.processed || !z.window) continue;
+    const zs = Math.max(1, z.window.end - z.window.start);
+    const n = z.processed.channels[0].length;
+    let a = Math.round(z.window.start + fs * zs), b = Math.round(z.window.start + fe * zs);
+    a = nearestZeroCrossing(z.processed.channels, Math.max(0, Math.min(n - 2, a)));
+    b = nearestZeroCrossing(z.processed.channels, Math.max(a + 16, Math.min(n - 1, b)));
+    setLoop(z, a, b);
+    z.loopEnabled = src.loopEnabled;
+  }
+  render();
+});
 
 function renderDetail() {
   const z = selectedZone();
@@ -427,12 +545,17 @@ function renderDetail() {
   if (p.loop) {
     detail.start.value = p.loop.start;
     detail.end.value = p.loop.end;
+    const len = p.loop.end - p.loop.start;
     detail.startVal.textContent = `${p.loop.start} · ${(p.loop.start / p.sampleRate).toFixed(3)} s`;
-    detail.endVal.textContent = `${p.loop.end} · ${(p.loop.end / p.sampleRate).toFixed(3)} s`;
+    detail.endVal.textContent = `${p.loop.end} · ${(len / p.sampleRate * 1000).toFixed(0)} ms long`;
   } else {
     detail.startVal.textContent = detail.endVal.textContent = 'no loop';
   }
-  drawWaveform(detail.wave, p.channels, { loop: z.loopEnabled ? p.loop : null, playhead: playheadFor(z) });
+  detail.pitch.textContent = pitchLabel(z.detected);
+  detail.usePitch.classList.toggle('hidden', !(z.detected && z.detected.midi !== z.keycenter));
+  detail.fade.value = z.fadeMs === null ? '' : z.fadeMs;
+  detail.fadeVal.textContent = z.fadeMs === null ? (opts.fade ? `global ${opts.fadeOutMs} ms` : 'off') : `${z.fadeMs} ms`;
+  editor.draw(playheadFor(z));
 }
 
 function nudgeLoop() {
@@ -440,20 +563,19 @@ function nudgeLoop() {
   if (!z || !z.processed) return;
   let s = Number(detail.start.value), e = Number(detail.end.value);
   if (e <= s + 16) e = s + 16;
-  z.loopOverride = { start: s, end: e };
-  z.processed.loop = { start: s, end: e, score: null };
-  z._buffer = null;
+  setLoop(z, s, e);
   renderDetail();
   renderZoneList();
 }
 detail.start.addEventListener('input', nudgeLoop);
 detail.end.addEventListener('input', nudgeLoop);
-detail.on.addEventListener('change', () => { const z = selectedZone(); if (z) { z.loopEnabled = detail.on.checked; render(); } });
+detail.on.addEventListener('change', () => { const z = selectedZone(); if (z) { z.loopEnabled = detail.on.checked; markDirty(); render(); } });
 $('#loop-refind').addEventListener('click', () => {
   const z = selectedZone();
   if (!z) return;
   z.loopOverride = null;
   processZone(z);
+  markDirty();
   render();
 });
 $('#remove').addEventListener('click', () => { const z = selectedZone(); if (z) removeZone(z.id); });
@@ -474,10 +596,12 @@ function renderKeyboard() {
   for (let i = 0; i < 25; i++) {
     const midi = base + i;
     const black = [1, 3, 6, 8, 10].includes(midi % 12);
-    const covered = !!zoneForNote(sorted, midi) && sorted.length;
+    const zone = sorted.length ? zoneForNote(sorted, midi) : null;
+    const zi = zone ? sorted.indexOf(zone) : -1;
     kb.append(el('div', {
-      class: `key ${black ? 'black' : ''} ${held.has(midi) ? 'down' : ''}`,
-      style: covered ? '' : 'opacity:0.35',
+      class: `key ${black ? 'black' : ''} ${held.has(midi) ? 'down' : ''} ${zi >= 0 ? (zi % 2 ? 'zone-b' : 'zone-a') : ''} ${zone && zone.keycenter === midi ? 'root' : ''}`,
+      style: zone ? '' : 'opacity:0.35',
+      title: zone ? `${midiToName(midi)} → zone ${midiToName(zone.keycenter)}` : midiToName(midi),
       dataset: { midi },
       onmousedown: (e) => { e.preventDefault(); pressNote(midi); },
       onmouseup: () => releaseNote(midi),
@@ -512,7 +636,7 @@ function animatePlayhead() {
     const z = selectedZone();
     if (z && z.processed) {
       const ph = playheadFor(z);
-      drawWaveform(detail.wave, z.processed.channels, { loop: z.loopEnabled ? z.processed.loop : null, playhead: ph });
+      editor.draw(ph);
       if (ph === null && held.size === 0) { playheadRaf = null; return; }
     } else if (held.size === 0) { playheadRaf = null; return; }
     playheadRaf = requestAnimationFrame(tick);
@@ -568,7 +692,7 @@ $('#export').addEventListener('click', async () => {
   btn.disabled = true;
   try {
     const name = presetName();
-    const folder = `${name}.preset`;
+    const folder = `${name === 'untitled' ? `untitled ${new Date().toISOString().slice(11, 16).replace(':', '')}` : name}.preset`;
     const entries = [];
     const zonesOut = [];
     const sorted = sortedZones();
@@ -606,6 +730,78 @@ $('#export').addEventListener('click', async () => {
     renderExport();
   }
 });
+
+$('#export-raw').addEventListener('click', async () => {
+  const sorted = sortedZones().filter((z) => z.raw);
+  if (!sorted.length) return;
+  const name = presetName();
+  const entries = [];
+  const used = new Set();
+  for (const z of sorted) {
+    let filename = `${name}-${midiToName(z.keycenter)}-raw.wav`;
+    let k = 2;
+    while (used.has(filename)) filename = `${name}-${midiToName(z.keycenter)}-raw-${k++}.wav`;
+    used.add(filename);
+    entries.push({ name: `${name} raw takes/${filename}`, data: encodeWav(z.raw.channels, z.raw.sampleRate, { rootNote: z.keycenter }) });
+  }
+  const zip = buildZip(entries);
+  download(zip, `${name} raw takes.zip`);
+  $('#export-status').textContent = `exported ${sorted.length} raw takes — ${formatBytes(zip.size)} (untrimmed, at the recorded sample rate)`;
+});
+
+// ---------- session persistence ----------
+
+let dirty = false;
+let saveTimer = null;
+function markDirty() {
+  dirty = true;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(persist, 1500);
+}
+async function persist() {
+  if (!dirty) return;
+  dirty = false;
+  try {
+    if (!state.zones.length) { await clearSession(); return; }
+    await saveSession({
+      presetName: $('#preset-name').value,
+      convention: Number($('#convention').value),
+      zones: state.zones.filter((z) => z.raw).map((z) => ({
+        name: z.name, keycenter: z.keycenter, noteSource: z.noteSource, hints: z.hints, origin: z.origin,
+        detected: z.detected, fadeMs: z.fadeMs, loopEnabled: z.loopEnabled, loopOverride: z.loopOverride,
+        raw: { channels: z.raw.channels, sampleRate: z.raw.sampleRate },
+      })),
+    });
+  } catch (err) {
+    console.warn('could not save session', err);
+  }
+}
+async function offerRestore() {
+  let data;
+  try { data = await loadSession(); } catch { return; }
+  if (!data?.zones?.length || state.zones.length) return;
+  const box = $('#session-notice');
+  const when = new Date(data.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  box.append(el('div', { class: 'notice' },
+    `a previous session with ${data.zones.length} zone${data.zones.length === 1 ? '' : 's'} ("${data.presetName}", saved ${when}) is still here. `,
+    el('button', { class: 'btn small', style: 'margin:0 6px', onclick: () => {
+      $('#preset-name').value = data.presetName || 'untitled';
+      $('#convention').value = String(data.convention || 3);
+      setMiddleCOctave(Number($('#convention').value));
+      for (const zd of data.zones) {
+        const z = addZone({ name: zd.name, raw: zd.raw, keycenter: zd.keycenter, noteSource: zd.noteSource, hints: zd.hints, origin: zd.origin });
+        z.detected = zd.detected || null; z.fadeMs = zd.fadeMs ?? null; z.loopEnabled = zd.loopEnabled !== false; z.loopOverride = zd.loopOverride || null;
+        processZone(z);
+      }
+      box.innerHTML = '';
+      dirty = false;
+      render();
+    } }, 'restore'),
+    el('button', { class: 'btn ghost small', onclick: async () => { await clearSession(); box.innerHTML = ''; } }, 'discard'),
+  ));
+}
+offerRestore();
+window.addEventListener('pagehide', () => { if (dirty) persist(); });
 
 // ---------- mode tabs ----------
 

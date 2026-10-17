@@ -54,9 +54,29 @@ python3 -m http.server 8000
 5. **Start sampling**. Each note appears in the zone list as it lands; abort at any time.
 6. Review, then **export**.
 
+## Reviewing and editing loops
+
+- Click a zone (list or zone map) to load it into the editor. Scroll to zoom, drag to pan, or use
+  **fit** / **loop** / **+** / **−**.
+- Drag the orange handles to move the loop points. They snap to rising zero crossings; hold **⌥**
+  to move freely. The splice view underneath shows the audio just before the loop end butted
+  against the audio just after the loop start — a smooth line means a clean loop.
+- The dashed lines are the **loop search window**, where the automatic finder looks. Drag them to
+  change the window for every zone (for auto-sampled zones it is measured against the held part of
+  the note). **Apply to all** copies the selected zone's loop position to every other zone,
+  proportionally, snapped to zero crossings.
+- **Detect** reads the pitch of a zone (or **detect all pitches** in the zones header). If it
+  disagrees with the root note, **use as root** fixes the key centre. Tick **retune zones to
+  detected pitch** in processing to correct small tuning offsets in the audio itself.
+- Play from the computer keyboard; the key shading shows which zone each note uses.
+- Your zones are kept in the browser between visits; you'll be offered a restore after a reload.
+  **Export raw takes** saves the untouched recordings if you want them for another sampler.
+
 ## Using the preset on the device
 
-1. Unzip the download. You get a folder called `name.preset`.
+1. Unzip the download. You get a folder called `name.preset`. If Finder has named it
+   `name.preset 2` because one already existed, rename it — the device needs the name to end in
+   `.preset`.
 2. Put the OP-XY in disk mode (or use the field kit app) and copy the whole folder into `presets/`
    (or a subfolder of it).
 3. Eject. The preset appears in the sampler's preset list.
@@ -93,6 +113,8 @@ js/chop.js        silence chopper for long recordings
 js/patch.js       patch.json builder (schema from a device-written preset)
 js/zip.js         store-only zip writer
 js/player.js      audition playback
+js/loopeditor.js  zoom / pan / drag loop editor with splice view
+js/session.js     IndexedDB session persistence
 js/midi.js        Web MIDI output
 js/recorder.js    continuous audio input capture (+ recorder-worklet.js)
 js/sampler.js     auto-sampler: test note, range planning, the run

@@ -29,6 +29,7 @@
   <div id="unsupported" class="notice error hidden">
     this tool needs a recent chrome or edge (web audio, file system and — for auto-sampling — web midi).
   </div>
+  <div id="session-notice"></div>
 
   <section class="panel">
     <div class="grid cols-4">
@@ -228,7 +229,8 @@
       </div>
       <div class="field">
         <label class="check"><input type="checkbox" id="opt-extend" checked> top zone covers up to g9</label>
-        <span class="faint" style="font-size:11px">off = top zone stops at its own note, as the device writes it</span>
+        <label class="check"><input type="checkbox" id="opt-retune"> retune zones to detected pitch</label>
+        <span class="faint" style="font-size:11px">fine-tunes the audio itself (needs detect pitch)</span>
       </div>
     </div>
   </section>
@@ -238,6 +240,8 @@
       <span>zones <span class="mono" id="zone-count">0 / 24</span></span>
       <span class="row">
         <button class="btn ghost small" id="thin">thin to 24</button>
+        <button class="btn ghost small" id="detect-all">detect all pitches</button>
+        <button class="btn ghost small" id="export-raw">export raw takes</button>
         <button class="btn ghost small" id="clear">clear all</button>
       </span>
     </h2>
@@ -247,23 +251,41 @@
   </section>
 
   <section class="panel" id="detail-panel">
-    <h2><span>selected zone <span class="mono" id="detail-title"></span></span></h2>
-    <canvas class="wave" id="wave"></canvas>
+    <h2>
+      <span>selected zone <span class="mono" id="detail-title"></span></span>
+      <span class="row" style="gap:4px">
+        <button class="btn ghost small" id="zoom-fit">fit</button>
+        <button class="btn ghost small" id="zoom-loop">loop</button>
+        <button class="btn ghost small" id="zoom-in">+</button>
+        <button class="btn ghost small" id="zoom-out">−</button>
+      </span>
+    </h2>
+    <canvas class="wave" id="wave" style="height:150px"></canvas>
+    <canvas class="wave" id="splice" style="height:64px;margin-top:6px"></canvas>
+    <p class="faint" style="margin:6px 0 0;font-size:11px">drag the orange handles to move loop points (snap to zero crossings; hold <kbd>⌥</kbd> to move freely) · dashed lines are the loop search window — drag them to change it for every zone · scroll to zoom, drag to pan · splice view shows the loop join</p>
     <div class="grid cols-4" style="margin-top:10px">
       <div class="field">
         <label>loop start <span class="val" id="loop-start-val">–</span></label>
         <input type="range" id="loop-start" min="0" max="1000" value="0">
-      </div>
-      <div class="field">
         <label>loop end <span class="val" id="loop-end-val">–</span></label>
         <input type="range" id="loop-end" min="0" max="1000" value="1000">
       </div>
       <div class="field">
-        <label>&nbsp;</label>
+        <label>loop</label>
+        <label class="check"><input type="checkbox" id="loop-on"> loop this zone</label>
         <div class="row">
-          <button class="btn secondary small" id="loop-refind">re-find loop</button>
-          <label class="check"><input type="checkbox" id="loop-on"> loop this zone</label>
+          <button class="btn secondary small" id="loop-refind">re-find</button>
+          <button class="btn secondary small" id="loop-apply-all" title="place every other zone's loop at the same relative position, snapped to zero crossings">apply to all</button>
         </div>
+      </div>
+      <div class="field">
+        <label>pitch <span class="val" id="pitch-val">not detected</span></label>
+        <div class="row">
+          <button class="btn secondary small" id="detect">detect</button>
+          <button class="btn secondary small hidden" id="use-pitch">use as root</button>
+        </div>
+        <label>fade out <span class="val" id="fade-val">global</span></label>
+        <div class="row"><input type="number" id="zone-fade" min="0" max="5000" step="10" placeholder="global"> <span class="muted">ms</span></div>
       </div>
       <div class="field">
         <label>&nbsp;</label>
@@ -275,7 +297,7 @@
       </div>
     </div>
     <div class="keyboard" id="keyboard"></div>
-    <p class="faint" style="margin-top:6px;font-size:12px">play from the computer keyboard: <kbd>a</kbd>–<kbd>k</kbd> white keys, <kbd>w</kbd> <kbd>e</kbd> <kbd>t</kbd> <kbd>y</kbd> <kbd>u</kbd> black keys, <kbd>z</kbd>/<kbd>x</kbd> octave down/up</p>
+    <p class="faint" style="margin-top:6px;font-size:12px">play from the computer keyboard: <kbd>a</kbd>–<kbd>k</kbd> white keys, <kbd>w</kbd> <kbd>e</kbd> <kbd>t</kbd> <kbd>y</kbd> <kbd>u</kbd> black keys, <kbd>z</kbd>/<kbd>x</kbd> octave down/up · shading shows which zone each key plays</p>
   </section>
 
   <section class="panel">
@@ -289,7 +311,7 @@
       <button class="btn accent" id="export" disabled>export .preset zip</button>
     </div>
     <div id="export-status" class="status" style="margin-top:8px"></div>
-    <p class="faint" style="margin-top:10px;font-size:12px">unzip, then copy the <span class="mono">name.preset</span> folder into <span class="mono">presets/</span> on the op-xy in disk mode (or via the field kit app).</p>
+    <p class="faint" style="margin-top:10px;font-size:12px">unzip, then copy the <span class="mono">name.preset</span> folder into <span class="mono">presets/</span> on the op-xy in disk mode (or via the field kit app). if finder names the folder <span class="mono">name.preset 2</span> because one already exists, rename it before copying — the device needs the name to end in <span class="mono">.preset</span>.</p>
   </section>
 
   <footer>

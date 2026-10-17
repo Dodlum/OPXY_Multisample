@@ -214,3 +214,37 @@ export function processNote(raw, opts) {
 
   return { channels: ch, sampleRate: sr, trimmedFrom, loop, peakDb: linToDb(peak(ch)) };
 }
+
+// Nearest rising zero crossing to `frame` within ±maxDist, on a mono mix.
+export function nearestZeroCrossing(channels, frame, maxDist = 4000) {
+  const mono = monoMix(channels);
+  const n = mono.length;
+  frame = Math.max(1, Math.min(n - 1, Math.round(frame)));
+  for (let d = 0; d <= maxDist; d++) {
+    const a = frame - d, b = frame + d;
+    if (a >= 1 && mono[a - 1] < 0 && mono[a] >= 0) return a;
+    if (b < n && mono[b - 1] < 0 && mono[b] >= 0) return b;
+  }
+  return frame;
+}
+
+// Shift pitch by `cents` through resampling (Catmull-Rom interpolation).
+// Meant for small corrections, where this is clean enough and keeps the
+// pipeline synchronous.
+export function retune(channels, cents) {
+  if (!cents) return channels;
+  const ratio = Math.pow(2, cents / 1200);   // >1 raises pitch (reads faster)
+  const n = channels[0].length;
+  const outLen = Math.floor(n / ratio);
+  return channels.map((ch) => {
+    const out = new Float32Array(outLen);
+    for (let i = 0; i < outLen; i++) {
+      const pos = i * ratio;
+      const j = Math.floor(pos);
+      const t = pos - j;
+      const p0 = ch[Math.max(0, j - 1)], p1 = ch[j], p2 = ch[Math.min(n - 1, j + 1)], p3 = ch[Math.min(n - 1, j + 2)];
+      out[i] = 0.5 * ((2 * p1) + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t + (-p0 + 3 * p1 - 3 * p2 + p3) * t * t * t);
+    }
+    return out;
+  });
+}

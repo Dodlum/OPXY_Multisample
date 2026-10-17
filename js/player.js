@@ -25,7 +25,7 @@ function bufferFor(zone) {
   return zone._buffer;
 }
 
-export function noteOn(zones, note, { releaseSec = 0.15, attackSec = 0 } = {}) {
+export function noteOn(zones, note, { releaseSec = 0.15, attackSec = 0, offsetFrames = 0 } = {}) {
   const sorted = [...zones].filter((z) => z.processed).sort((a, b) => a.keycenter - b.keycenter);
   const zone = zoneForNote(sorted, note);
   if (!zone) return null;
@@ -45,8 +45,10 @@ export function noteOn(zones, note, { releaseSec = 0.15, attackSec = 0 } = {}) {
   gain.gain.setValueAtTime(attackSec > 0 ? 0.0001 : 1, ac.currentTime);
   if (attackSec > 0) gain.gain.exponentialRampToValueAtTime(1, ac.currentTime + attackSec);
   src.connect(gain).connect(ac.destination);
-  src.start();
-  active.set(note, { src, gain, zone, releaseSec, startedAt: ac.currentTime });
+  const sr = zone.processed.sampleRate;
+  const offsetSec = Math.max(0, Math.min(offsetFrames, zone.processed.channels[0].length - 1)) / sr;
+  src.start(0, offsetSec);
+  active.set(note, { src, gain, zone, releaseSec, startedAt: ac.currentTime - offsetSec / src.playbackRate.value });
   src.onended = () => {
     if (active.get(note)?.src === src) active.delete(note);
   };

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.0 — stage 3: review and loop editing
+
+- Loop editor on the selected zone: scroll to zoom, drag to pan, zoom-to-loop; draggable loop
+  handles that snap to rising zero crossings (hold ⌥ to move freely); a splice view showing the
+  audio either side of the loop join.
+- The loop search window is drawn on every zone and can be dragged on the big waveform; it applies
+  to all zones. "Apply to all" places every zone's loop at the same relative position, snapped.
+- Detect pitch for one zone or all; shows note, cents and Hz; "use as root" sets the key centre.
+  Optional "retune zones to detected pitch" fine-tunes the audio by resampling.
+- Per-zone fade-out override.
+- Export raw takes as a separate zip (untrimmed, at the recorded rate).
+- The session is kept in the browser (IndexedDB) and offered for restore after a reload.
+- Keyboard shows which zone each key plays and marks root notes.
+- Double-click the waveform to audition from that point.
+- Default "untitled" exports get a time suffix so repeated downloads don't collide in Finder.
+- Pitch detector rewritten to take the first strong autocorrelation peak (fixes sub-harmonic locks).
+
 ## 0.2.0 — stage 2: auto-sample
 
 - Auto-sample mode: choose a MIDI output and channel, an audio input and channel pick (1, 2 or the

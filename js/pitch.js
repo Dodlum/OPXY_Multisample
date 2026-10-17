@@ -27,29 +27,23 @@ export function detectPitch(channels, sampleRate, { fromFrac = 0.2, windowMs = 1
     nac[lag] = r / Math.sqrt(e0 * e1 + 1e-12);
   }
 
-  // Best local peak of the normalised autocorrelation.
+  // Global maximum first, then take the FIRST local peak that comes close to
+  // it (McLeod-style). On a periodic signal every multiple of the period is a
+  // peak of nearly equal height, so the earliest one is the fundamental.
+  let maxVal = 0;
+  for (let lag = minLag + 1; lag < maxLag; lag++) if (nac[lag] > maxVal) maxVal = nac[lag];
+  if (maxVal < 0.5) return null;
   let bestLag = -1;
   let bestVal = 0;
+  const cutoff = maxVal * 0.93;
   for (let lag = minLag + 1; lag < maxLag; lag++) {
-    if (nac[lag] > bestVal && nac[lag] >= nac[lag - 1] && nac[lag] >= nac[lag + 1]) {
-      bestVal = nac[lag];
+    if (nac[lag] >= cutoff && nac[lag] >= nac[lag - 1] && nac[lag] >= nac[lag + 1]) {
       bestLag = lag;
-    }
-  }
-  if (bestLag < 0 || bestVal < 0.5) return null;
-
-  // Guard against locking an octave (or more) low: if a sub-multiple of the
-  // best lag is also a strong peak, take that instead.
-  for (let k = 4; k >= 2; k--) {
-    const l = Math.round(bestLag / k);
-    if (l < minLag + 1) continue;
-    let localBest = l;
-    for (let j = l - 2; j <= l + 2; j++) if (j > minLag && j < maxLag && nac[j] > nac[localBest]) localBest = j;
-    if (nac[localBest] >= bestVal * 0.9 && nac[localBest] >= nac[localBest - 1] && nac[localBest] >= nac[localBest + 1]) {
-      bestLag = localBest;
+      bestVal = nac[lag];
       break;
     }
   }
+  if (bestLag < 0) return null;
 
   // Parabolic interpolation around the peak for sub-sample accuracy.
   const a = nac[bestLag - 1], b = nac[bestLag], c = nac[bestLag + 1];
