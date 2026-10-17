@@ -14,6 +14,7 @@ import { buildPatch, MAX_ZONES, MAX_SECONDS, zoneForNote } from './patch.js';
 import { buildZip } from './zip.js';
 import { noteOn, noteOff, allNotesOff, playheadFor, isRinging } from './player.js';
 import { initAutoSample } from './autosample.js';
+import { initKnobs } from './knob.js';
 
 // ---------- state ----------
 
@@ -95,7 +96,8 @@ function updateWin() {
   let a = Number(winFrom.value), b = Number(winTo.value);
   if (b <= a + 5) { b = a + 5; winTo.value = b; }
   opts.winFrom = a / 100; opts.winTo = b / 100;
-  $('#opt-win-val').textContent = `${a}–${b} %`;
+  $('#opt-win-from-val').textContent = `${a} %`;
+  $('#opt-win-val').textContent = `${b} %`;
 }
 winFrom.addEventListener('input', () => { updateWin(); scheduleReprocess(); });
 winTo.addEventListener('input', () => { updateWin(); scheduleReprocess(); });
@@ -422,7 +424,7 @@ function renderZoneList() {
       onclick: (e) => { if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'BUTTON') { state.selectedId = z.id; render(); } },
     },
       el('span', { class: 'idx' }, String(i + 1).padStart(2, '0')),
-      el('span', { class: 'note' }, noteInput, el('span', { class: 'src' }, z.noteSource === 'you' ? '' : z.noteSource.split(' ')[0])),
+      el('span', { class: 'note' }, noteInput, el('span', { class: 'src' }, z.noteSource === 'filename' ? '' : z.noteSource.split(' ')[0])),
       el('div', {}, canvas, el('div', { class: 'name', title: z.name }, z.name)),
       el('span', { class: 'meta' }, z.recording ? 'recording…' : p ? `${formatSeconds(secs)} · ${p.loop && z.loopEnabled ? 'loop' : 'one-shot'}` : '…'),
       el('button', { class: 'icon', title: 'remove', onclick: () => removeZone(z.id) }, '×'),
@@ -855,5 +857,6 @@ const api = {
 };
 initAutoSample(api);
 
+initKnobs();
 window.addEventListener('resize', () => { renderZoneList(); renderDetail(); });
 render();

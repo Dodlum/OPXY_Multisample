@@ -203,7 +203,7 @@ export function initAutoSample(api) {
       const sug = fitSuggestions(p);
       const row = el('div', { class: 'notice error' }, `${n} zones — the op-xy holds ${MAX_ZONES}. `);
       for (const s of sug) {
-        if (s.step) row.append(el('button', { class: 'btn small', style: 'margin-right:6px', onclick: () => { ui.step.value = s.step; cfg.step = s.step; ui.stepVal.textContent = String(s.step); renderPlan(); } }, `every ${s.step} semitones`));
+        if (s.step) row.append(el('button', { class: 'btn small', style: 'margin-right:6px', onclick: () => { ui.step.value = s.step; ui.step.dispatchEvent(new Event('input')); } }, `every ${s.step} semitones`));
         if (s.end !== undefined) row.append(el('button', { class: 'btn small', onclick: () => { ui.end.value = api.noteName(s.end); renderPlan(); } }, `end at ${api.noteName(s.end)}`));
       }
       ui.planNotice.append(row);

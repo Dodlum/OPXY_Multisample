@@ -112,6 +112,7 @@ js/pitch.js       fallback pitch detection
 js/chop.js        silence chopper for long recordings
 js/patch.js       patch.json builder (schema from a device-written preset)
 js/zip.js         store-only zip writer
+js/knob.js        round dial control for range inputs
 js/player.js      audition playback
 js/loopeditor.js  zoom / pan / drag loop editor with splice view
 js/session.js     IndexedDB session persistence

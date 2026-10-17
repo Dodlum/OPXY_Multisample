@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0 — stage 4: design pass
+
+- Rebuilt the look in the Teenage Engineering spirit: monochrome, lowercase, ruled sections numbered
+  like the manual, one orange for the live thing, generous spacing, mono for every number.
+- Sliders replaced by round dials: drag up / down (⇧ for fine), scroll, double-click to reset,
+  arrow keys when focused. Loop start / end stay as thin sliders.
+- Checkboxes replaced by round switches; processing laid out as a row of switches and a row of dials.
+- Round zone-map slots, ruled zone list, quieter buttons, pill mode switch, round theme toggle.
+- Light and dark themes tuned; the theme is applied before first paint to avoid a flash.
+- Abort is immediate during a run; end note follows the step for 24 zones; latching play button;
+  releasing a key leaves the loop and plays the tail; the keyboard selects the zone it plays.
+
 ## 0.3.0 — stage 3: review and loop editing
 
 - Loop editor on the selected zone: scroll to zoom, drag to pan, zoom-to-loop; draggable loop
