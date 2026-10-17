@@ -1,9 +1,17 @@
 # multisample builder for OP-XY
 
-A browser-based tool that builds multisampler presets for the Teenage Engineering OP-XY
-(firmware 1.2.0). It runs entirely client-side — nothing is uploaded anywhere.
+**Turn any synth into an OP-XY multisampler preset in a couple of minutes.** Plug the synth into
+your Mac, press one button, and the tool plays every note over MIDI, records it, trims it, finds
+loop points, normalises it, and writes a finished `.preset` folder you drop straight onto the
+device. Or hand it a folder of samples and it does the same job without the sampling. Free, open
+source, runs entirely in your browser — nothing is uploaded anywhere.
 
-**Live:** https://dodlum.github.io/OPXY_Multisample/
+**Use it here:** https://dodlum.github.io/OPXY_Multisample/
+
+![multisample builder — light theme](docs/screenshot-light.png)
+
+Built for the OP-XY on firmware 1.2.0; the `patch.json` it writes is cloned from a preset the
+device itself saved, and every build is checked on hardware.
 
 Two ways in, one processing pipeline out:
 
@@ -124,3 +132,11 @@ reference/        patch.json from the device, Tonverk auto-sampler notes
 ```
 
 No build step: edit, push to `main`, GitHub Pages serves it.
+
+## Licence and credit
+
+MIT — use it, fork it, improve it. If you build on it, a link back is appreciated.
+
+This is an independent tool by [David Odlum](https://www.davidodlum.com). It is not affiliated
+with or endorsed by Teenage Engineering; OP-XY is their trademark. The auto-sampler's workflow
+is modelled on the Auto Sampler in the Elektron Tonverk.
