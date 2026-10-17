@@ -204,3 +204,13 @@ dialog::backdrop { background: rgba(0,0,0,0.35); }
 .progress > div { height: 100%; background: var(--accent); width: 0; transition: width 0.1s; }
 .hidden { display: none !important; }
 kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; color: var(--ink-2); }
+
+/* input meter */
+.meter { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; }
+.meter > div { height: 6px; background: var(--line-2); border-radius: 2px; position: relative; overflow: hidden; }
+.meter > div::after { content: ''; position: absolute; inset: 0; width: var(--level, 0%); background: var(--ink); transition: width 0.05s; }
+.meter > div.hot::after { background: var(--danger); }
+.zone.recording { border-color: var(--accent); border-style: dashed; }
+
+.field .row { flex-wrap: nowrap; }
+.field .row input[type="number"] { width: auto; flex: 1; min-width: 0; }

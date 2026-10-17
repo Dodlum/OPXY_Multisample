@@ -9,8 +9,8 @@ Two ways in, one processing pipeline out:
 
 - **import** — drop a folder of one-note-per-file WAV/AIFF samples (note in the filename or in
   the WAV `smpl` chunk), or one long recording of ascending notes to chop by silence.
-- **auto-sample** *(stage 2)* — play a connected synth over Web MIDI, record it through your
-  audio interface, and build the preset automatically, Tonverk-style.
+- **auto-sample** — play a connected synth over Web MIDI, record it through your audio
+  interface, and build the preset automatically, Tonverk-style.
 
 The output is a zip containing `name.preset/patch.json` plus the WAVs, ready to drop into the
 OP-XY's `presets/` folder.
@@ -40,6 +40,19 @@ python3 -m http.server 8000
 - **MIDI** — Chrome asks separately for MIDI access (and for SysEx, which this tool does not use).
 - On macOS, Chrome itself must be allowed to use the microphone in
   *System Settings → Privacy & Security → Microphone*.
+
+## Auto-sampling
+
+1. Connect the synth: MIDI from the computer to the synth (USB or a MIDI interface), and the
+   synth's audio into an input pair on your interface. Turn off any processing on that input.
+2. Press **connect midi & audio**, grant both permissions, pick the MIDI output / channel and the
+   audio input / channels. The meter should move when the synth plays.
+3. **Play test note** — the tool measures latency and the release tail, and reports noise floor and
+   peak. Aim for peaks around −6 to −12 dBFS. Override the numbers if you prefer.
+4. Set the **range**: start, end, step in semitones (1 = every note, 12 = one per octave), hold
+   time, velocity. The planner shows the zone count and refuses more than 24.
+5. **Start sampling**. Each note appears in the zone list as it lands; abort at any time.
+6. Review, then **export**.
 
 ## Using the preset on the device
 
@@ -80,6 +93,10 @@ js/chop.js        silence chopper for long recordings
 js/patch.js       patch.json builder (schema from a device-written preset)
 js/zip.js         store-only zip writer
 js/player.js      audition playback
+js/midi.js        Web MIDI output
+js/recorder.js    continuous audio input capture (+ recorder-worklet.js)
+js/sampler.js     auto-sampler: test note, range planning, the run
+js/autosample.js  auto-sample mode UI
 reference/        patch.json from the device, Tonverk auto-sampler notes
 ```
 

@@ -11,6 +11,7 @@ import { chopBySilence } from './chop.js';
 import { buildPatch, MAX_ZONES, MAX_SECONDS, zoneForNote } from './patch.js';
 import { buildZip } from './zip.js';
 import { noteOn, noteOff, allNotesOff, playheadFor } from './player.js';
+import { initAutoSample } from './autosample.js';
 
 // ---------- state ----------
 
@@ -19,6 +20,7 @@ const state = {
   selectedId: null,
   nextId: 1,
   octave: 3,         // keyboard base octave (in the chosen convention)
+  mode: 'import',
 };
 
 const opts = {
@@ -243,13 +245,15 @@ function askNote(filename) {
 
 // ---------- zones ----------
 
-function addZone({ name, raw, keycenter, noteSource }) {
+function addZone({ name, raw, keycenter, noteSource, hints = null, origin = 'import' }) {
   const zone = {
     id: state.nextId++,
     name,
     raw,
     keycenter,
     noteSource,
+    hints,
+    origin,
     processed: null,
     loopEnabled: opts.loop,
     loopOverride: null,   // { start, end } set by hand on the detail panel
@@ -264,13 +268,20 @@ function sortedZones() {
 }
 
 function processZone(zone) {
+  const h = zone.hints;
+  // Auto-sampled zones know where the note starts and how long it was held,
+  // so the loop window is a fraction of the held part rather than of the file.
+  const loopSearch = h
+    ? { fromFrame: h.onsetFrame + Math.round(h.holdFrames * opts.winFrom), toFrame: h.onsetFrame + Math.round(h.holdFrames * opts.winTo) }
+    : { fromFrac: opts.winFrom, toFrac: opts.winTo };
   zone.processed = processNote(zone.raw, {
     trim: opts.trim,
     thresholdDb: opts.thresholdDb,
+    latencyFrames: h ? h.latencyFrames : 0,
     doNormalise: opts.normalise,
     normaliseTo: opts.normaliseTo,
     loopEnabled: opts.loop,
-    loopSearch: { fromFrac: opts.winFrom, toFrac: opts.winTo },
+    loopSearch,
     cutAtLoopEnd: opts.cutAtLoopEnd && zone.loopEnabled,
     fadeOutMs: opts.fade ? opts.fadeOutMs : 0,
     maxSeconds: MAX_SECONDS,
@@ -291,10 +302,7 @@ function scheduleReprocess() {
   reprocessTimer = setTimeout(reprocessAll, 120);
 }
 function reprocessAll() {
-  for (const z of state.zones) {
-    z.loopEnabled = opts.loop && z.loopEnabled !== false ? true : z.loopEnabled && opts.loop;
-    processZone(z);
-  }
+  for (const z of state.zones) if (z.raw) processZone(z);
   render();
 }
 
@@ -385,13 +393,13 @@ function renderZoneList() {
     });
     const canvas = el('canvas');
     const row = el('div', {
-      class: `zone ${z.id === state.selectedId ? 'selected' : ''} ${dupes.has(z.keycenter) || secs > MAX_SECONDS ? 'problem' : ''}`,
+      class: `zone ${z.id === state.selectedId ? 'selected' : ''} ${dupes.has(z.keycenter) || secs > MAX_SECONDS ? 'problem' : ''} ${z.recording ? 'recording' : ''}`,
       onclick: (e) => { if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'BUTTON') { state.selectedId = z.id; render(); } },
     },
       el('span', { class: 'idx' }, String(i + 1).padStart(2, '0')),
       el('span', { class: 'note' }, noteInput, el('span', { class: 'src' }, z.noteSource === 'you' ? '' : z.noteSource.split(' ')[0])),
       el('div', {}, canvas, el('div', { class: 'name', title: z.name }, z.name)),
-      el('span', { class: 'meta' }, p ? `${formatSeconds(secs)} · ${p.loop && z.loopEnabled ? 'loop' : 'one-shot'}` : '…'),
+      el('span', { class: 'meta' }, z.recording ? 'recording…' : p ? `${formatSeconds(secs)} · ${p.loop && z.loopEnabled ? 'loop' : 'one-shot'}` : '…'),
       el('button', { class: 'icon', title: 'remove', onclick: () => removeZone(z.id) }, '×'),
     );
     list.append(row);
@@ -544,6 +552,7 @@ function presetName() {
 function renderExport() {
   const n = state.zones.length;
   const longest = state.zones.reduce((m, z) => Math.max(m, z.processed ? z.processed.channels[0].length / z.processed.sampleRate : 0), 0);
+  $('#rerecord').classList.toggle('hidden', !(state.mode === 'sample' && selectedZone()?.origin === 'sample' && api.canRecord?.()));
   $('#stat-size').textContent = formatBytes(estimateBytes());
   $('#stat-longest').textContent = formatSeconds(longest);
   $('#stat-longest').classList.toggle('over', longest > MAX_SECONDS);
@@ -605,7 +614,18 @@ $$('nav.modes button').forEach((b) => b.addEventListener('click', () => {
   $$('nav.modes button').forEach((x) => x.setAttribute('aria-selected', x === b));
   $('#mode-import').classList.toggle('hidden', b.dataset.mode !== 'import');
   $('#mode-sample').classList.toggle('hidden', b.dataset.mode !== 'sample');
+  state.mode = b.dataset.mode;
+  render();
 }));
+
+// Hooks the auto-sampler uses to feed zones into the shared state.
+const api = {
+  state, opts,
+  addZone, processZone, removeZone, render, checkZoneCount, selectedZone, presetName,
+  noteName: midiToName, parseNote: (v) => nameToMidi(v) ?? (/^\d{1,3}$/.test(v) && Number(v) <= 127 ? Number(v) : null),
+  replaceZoneAudio(zone, raw, hints) { zone.raw = raw; zone.hints = hints; zone.loopOverride = null; processZone(zone); render(); },
+};
+initAutoSample(api);
 
 window.addEventListener('resize', () => { renderZoneList(); renderDetail(); });
 render();

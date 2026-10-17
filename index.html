@@ -20,7 +20,7 @@
     <div class="row">
       <nav class="modes" role="tablist">
         <button role="tab" data-mode="import" aria-selected="true">import</button>
-        <button role="tab" data-mode="sample" aria-selected="false" disabled title="coming in stage 2">auto-sample</button>
+        <button role="tab" data-mode="sample" aria-selected="false">auto-sample</button>
       </nav>
       <button class="icon" id="theme" title="toggle light / dark">light / dark</button>
     </div>
@@ -29,6 +29,22 @@
   <div id="unsupported" class="notice error hidden">
     this tool needs a recent chrome or edge (web audio, file system and — for auto-sampling — web midi).
   </div>
+
+  <section class="panel">
+    <div class="grid cols-4">
+      <div class="field span-2">
+        <label>preset name</label>
+        <input type="text" id="preset-name" value="untitled" maxlength="40" spellcheck="false">
+      </div>
+      <div class="field span-2">
+        <label>middle c (midi 60) is called</label>
+        <select id="convention">
+          <option value="3" selected>c3 — op-xy / yamaha</option>
+          <option value="4">c4 — scientific / most daws</option>
+        </select>
+      </div>
+    </div>
+  </section>
 
   <!-- ============ import ============ -->
   <main id="mode-import">
@@ -43,17 +59,6 @@
           </label>
         </div>
         <div class="grid cols-2">
-          <div class="field">
-            <label>preset name</label>
-            <input type="text" id="preset-name" value="untitled" maxlength="40" spellcheck="false">
-          </div>
-          <div class="field">
-            <label>middle c (midi 60) is called</label>
-            <select id="convention">
-              <option value="3" selected>c3 — op-xy / yamaha</option>
-              <option value="4">c4 — scientific / most daws</option>
-            </select>
-          </div>
           <div class="field span-2">
             <label class="check"><input type="checkbox" id="long-mode"> one long recording — chop by silence</label>
           </div>
@@ -62,7 +67,7 @@
             <input type="text" id="long-start" value="c1" class="mono">
           </div>
           <div class="field long-only hidden">
-            <label>every <span class="val" id="long-step-val">3</span> semitones</label>
+            <label>step in semitones <span class="val" id="long-step-val">3</span></label>
             <input type="range" id="long-step" min="1" max="12" value="3">
           </div>
           <div class="field long-only hidden">
@@ -77,123 +82,215 @@
       </div>
       <div id="import-status" class="status" style="margin-top:10px"></div>
     </section>
+  </main>
+
+  <!-- ============ auto-sample ============ -->
+  <main id="mode-sample" class="hidden">
+    <div id="midi-unsupported" class="notice error hidden">web midi is not available in this browser — auto-sampling needs chrome or edge.</div>
 
     <section class="panel">
-      <h2>processing <span class="faint">applied to every zone</span></h2>
+      <h2><span>connections</span><button class="btn ghost small" id="connect">connect midi &amp; audio</button></h2>
+      <div class="grid cols-4">
+        <div class="field span-2">
+          <label>midi output</label>
+          <select id="midi-out"><option value="">— connect first —</option></select>
+        </div>
+        <div class="field">
+          <label>midi channel</label>
+          <select id="midi-ch"></select>
+        </div>
+        <div class="field">
+          <label>velocity <span class="val" id="velocity-val">100</span></label>
+          <input type="range" id="velocity" min="1" max="127" value="100">
+        </div>
+        <div class="field span-2">
+          <label>audio input</label>
+          <select id="audio-in"><option value="">— connect first —</option></select>
+        </div>
+        <div class="field">
+          <label>record</label>
+          <select id="audio-pick">
+            <option value="stereo" selected>stereo (1+2)</option>
+            <option value="left">mono — input 1</option>
+            <option value="right">mono — input 2</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>input level <span class="val" id="meter-val">–</span></label>
+          <div class="meter"><div id="meter-l"></div><div id="meter-r"></div></div>
+        </div>
+      </div>
+      <div id="connect-status" class="status" style="margin-top:10px"></div>
+    </section>
+
+    <section class="panel">
+      <h2><span>test note</span><span class="row"><input type="text" id="test-note" class="mono" value="c3" style="width:64px"><button class="btn small" id="test">play test note</button></span></h2>
       <div class="grid cols-4">
         <div class="field">
-          <label class="check"><input type="checkbox" id="opt-trim" checked> trim leading silence</label>
-          <label>threshold <span class="val" id="opt-thr-val">-48 dB</span></label>
-          <input type="range" id="opt-thr" min="-80" max="-12" value="-48">
+          <label>latency <span class="val" id="latency-measured">not measured</span></label>
+          <div class="row"><input type="number" id="latency" min="0" max="2000" step="1" value="0"> <span class="muted">ms</span></div>
         </div>
         <div class="field">
-          <label class="check"><input type="checkbox" id="opt-norm" checked> normalise</label>
-          <label>peak to <span class="val" id="opt-norm-val">-1 dB</span></label>
-          <input type="range" id="opt-norm-to" min="-12" max="0" step="0.5" value="-1">
+          <label>release <span class="val" id="release-measured">not measured</span></label>
+          <div class="row"><input type="number" id="release" min="0" max="20" step="0.1" value="1.0"> <span class="muted">s</span></div>
         </div>
-        <div class="field">
-          <label class="check"><input type="checkbox" id="opt-loop" checked> find loop points</label>
-          <label>crossfade <span class="val" id="opt-xf-val">10 %</span></label>
-          <input type="range" id="opt-xf" min="0" max="100" value="10">
-        </div>
-        <div class="field">
-          <label class="check"><input type="checkbox" id="opt-onrelease"> loop until release only</label>
-          <label class="check"><input type="checkbox" id="opt-cut"> cut sample at loop end</label>
-          <label class="check"><input type="checkbox" id="opt-fade"> fade out last <span class="val" id="opt-fade-val">200 ms</span></label>
-          <input type="range" id="opt-fade-ms" min="10" max="2000" step="10" value="200">
-        </div>
+        <div class="stat"><span class="big" id="noise-floor">–</span><span class="label">noise floor</span></div>
+        <div class="stat"><span class="big" id="test-peak">–</span><span class="label">peak</span></div>
       </div>
-      <div class="grid cols-4" style="margin-top:10px">
-        <div class="field">
-          <label>loop search window <span class="val" id="opt-win-val">25–90 %</span></label>
-          <input type="range" id="opt-win-from" min="0" max="80" value="25">
-          <input type="range" id="opt-win-to" min="20" max="100" value="90">
-        </div>
-        <div class="field">
-          <label>output</label>
-          <select id="opt-rate">
-            <option value="44100" selected>44.1 kHz / 16-bit</option>
-            <option value="22050">22.05 kHz / 16-bit (half size)</option>
-            <option value="11025">11.025 kHz / 16-bit (quarter size)</option>
-          </select>
-          <label class="check"><input type="checkbox" id="opt-mono"> mono (halves size)</label>
-        </div>
-        <div class="field">
-          <label>amp attack <span class="val" id="opt-att-val">0 %</span></label>
-          <input type="range" id="opt-att" min="0" max="100" value="0">
-          <label>amp release <span class="val" id="opt-rel-val">0 %</span></label>
-          <input type="range" id="opt-rel" min="0" max="100" value="0">
-        </div>
-        <div class="field">
-          <label class="check"><input type="checkbox" id="opt-extend" checked> top zone covers up to g9</label>
-          <span class="faint" style="font-size:11px">off = top zone stops at its own note, as the device writes it</span>
-        </div>
-      </div>
-    </section>
-
-    <section class="panel" id="zones-panel">
-      <h2>
-        <span>zones <span class="mono" id="zone-count">0 / 24</span></span>
-        <span class="row">
-          <button class="btn ghost small" id="thin">thin to 24</button>
-          <button class="btn ghost small" id="clear">clear all</button>
-        </span>
-      </h2>
-      <div class="zonemap" id="zonemap"></div>
-      <div id="zones-notice"></div>
-      <div class="zones" id="zones"></div>
-    </section>
-
-    <section class="panel" id="detail-panel">
-      <h2><span>selected zone <span class="mono" id="detail-title"></span></span></h2>
-      <canvas class="wave" id="wave"></canvas>
-      <div class="grid cols-4" style="margin-top:10px">
-        <div class="field">
-          <label>loop start <span class="val" id="loop-start-val">–</span></label>
-          <input type="range" id="loop-start" min="0" max="1000" value="0">
-        </div>
-        <div class="field">
-          <label>loop end <span class="val" id="loop-end-val">–</span></label>
-          <input type="range" id="loop-end" min="0" max="1000" value="1000">
-        </div>
-        <div class="field">
-          <label>&nbsp;</label>
-          <div class="row">
-            <button class="btn secondary small" id="loop-refind">re-find loop</button>
-            <label class="check"><input type="checkbox" id="loop-on"> loop this zone</label>
-          </div>
-        </div>
-        <div class="field">
-          <label>&nbsp;</label>
-          <div class="row">
-            <button class="btn secondary small" id="audition">play</button>
-            <button class="btn ghost small danger" id="remove">remove zone</button>
-          </div>
-        </div>
-      </div>
-      <div class="keyboard" id="keyboard"></div>
-      <p class="faint" style="margin-top:6px;font-size:12px">play from the computer keyboard: <kbd>a</kbd>–<kbd>k</kbd> white keys, <kbd>w</kbd> <kbd>e</kbd> <kbd>t</kbd> <kbd>y</kbd> <kbd>u</kbd> black keys, <kbd>z</kbd>/<kbd>x</kbd> octave down/up</p>
+      <canvas class="wave" id="test-wave" style="margin-top:10px;height:72px"></canvas>
+      <div id="test-status" class="status" style="margin-top:8px"></div>
     </section>
 
     <section class="panel">
-      <h2>export</h2>
-      <div class="row between">
-        <div class="row" style="gap:28px">
-          <div class="stat"><span class="big" id="stat-size">0 MB</span><span class="label">preset size</span></div>
-          <div class="stat"><span class="big" id="stat-longest">0 s</span><span class="label">longest sample (max 20 s)</span></div>
-          <div class="stat"><span class="big" id="stat-zones">0</span><span class="label">zones (max 24)</span></div>
+      <h2>range</h2>
+      <div class="grid cols-4">
+        <div class="field">
+          <label>start note</label>
+          <input type="text" id="range-start" class="mono" value="c1">
         </div>
-        <button class="btn accent" id="export" disabled>export .preset zip</button>
+        <div class="field">
+          <label>end note</label>
+          <input type="text" id="range-end" class="mono" value="c6">
+        </div>
+        <div class="field">
+          <label>step in semitones <span class="val" id="range-step-val">3</span></label>
+          <input type="range" id="range-step" min="1" max="12" value="3">
+        </div>
+        <div class="field">
+          <label>hold <span class="val" id="hold-val">2.0 s</span></label>
+          <input type="range" id="hold" min="0.1" max="19" step="0.1" value="2">
+          <label class="check"><input type="checkbox" id="anchor-c"> snap notes to the c grid</label>
+        </div>
       </div>
-      <div id="export-status" class="status" style="margin-top:8px"></div>
-      <p class="faint" style="margin-top:10px;font-size:12px">unzip, then copy the <span class="mono">name.preset</span> folder into <span class="mono">presets/</span> on the op-xy in disk mode (or via the field kit app).</p>
+      <div class="row between" style="margin-top:12px">
+        <div class="row" style="gap:28px">
+          <div class="stat"><span class="big" id="plan-count">0</span><span class="label">zones</span></div>
+          <div class="stat"><span class="big" id="plan-notes" style="font-size:13px">–</span><span class="label">notes</span></div>
+          <div class="stat"><span class="big" id="plan-time">–</span><span class="label">estimated time</span></div>
+        </div>
+        <div class="row">
+          <button class="btn accent" id="run" disabled>start sampling</button>
+          <button class="btn secondary hidden" id="abort">abort</button>
+        </div>
+      </div>
+      <div id="plan-notice"></div>
+      <div class="progress" style="margin-top:10px"><div id="run-progress"></div></div>
+      <div id="run-status" class="status" style="margin-top:8px"></div>
     </section>
   </main>
 
-  <!-- ============ auto-sample (stage 2) ============ -->
-  <main id="mode-sample" class="hidden">
-    <section class="panel"><h2>auto-sample</h2><p class="muted">coming in stage 2.</p></section>
-  </main>
+  <!-- ============ shared ============ -->
+  <section class="panel">
+    <h2>processing <span class="faint">applied to every zone</span></h2>
+    <div class="grid cols-4">
+      <div class="field">
+        <label class="check"><input type="checkbox" id="opt-trim" checked> trim leading silence</label>
+        <label>threshold <span class="val" id="opt-thr-val">-48 dB</span></label>
+        <input type="range" id="opt-thr" min="-80" max="-12" value="-48">
+      </div>
+      <div class="field">
+        <label class="check"><input type="checkbox" id="opt-norm" checked> normalise</label>
+        <label>peak to <span class="val" id="opt-norm-val">-1 dB</span></label>
+        <input type="range" id="opt-norm-to" min="-12" max="0" step="0.5" value="-1">
+      </div>
+      <div class="field">
+        <label class="check"><input type="checkbox" id="opt-loop" checked> find loop points</label>
+        <label>crossfade <span class="val" id="opt-xf-val">10 %</span></label>
+        <input type="range" id="opt-xf" min="0" max="100" value="10">
+      </div>
+      <div class="field">
+        <label class="check"><input type="checkbox" id="opt-onrelease"> loop until release only</label>
+        <label class="check"><input type="checkbox" id="opt-cut"> cut sample at loop end</label>
+        <label class="check"><input type="checkbox" id="opt-fade"> fade out last <span class="val" id="opt-fade-val">200 ms</span></label>
+        <input type="range" id="opt-fade-ms" min="10" max="2000" step="10" value="200">
+      </div>
+    </div>
+    <div class="grid cols-4" style="margin-top:10px">
+      <div class="field">
+        <label>loop search window <span class="val" id="opt-win-val">25–90 %</span></label>
+        <input type="range" id="opt-win-from" min="0" max="80" value="25">
+        <input type="range" id="opt-win-to" min="20" max="100" value="90">
+      </div>
+      <div class="field">
+        <label>output</label>
+        <select id="opt-rate">
+          <option value="44100" selected>44.1 kHz / 16-bit</option>
+          <option value="22050">22.05 kHz / 16-bit (half size)</option>
+          <option value="11025">11.025 kHz / 16-bit (quarter size)</option>
+        </select>
+        <label class="check"><input type="checkbox" id="opt-mono"> mono (halves size)</label>
+      </div>
+      <div class="field">
+        <label>amp attack <span class="val" id="opt-att-val">0 %</span></label>
+        <input type="range" id="opt-att" min="0" max="100" value="0">
+        <label>amp release <span class="val" id="opt-rel-val">0 %</span></label>
+        <input type="range" id="opt-rel" min="0" max="100" value="0">
+      </div>
+      <div class="field">
+        <label class="check"><input type="checkbox" id="opt-extend" checked> top zone covers up to g9</label>
+        <span class="faint" style="font-size:11px">off = top zone stops at its own note, as the device writes it</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="zones-panel">
+    <h2>
+      <span>zones <span class="mono" id="zone-count">0 / 24</span></span>
+      <span class="row">
+        <button class="btn ghost small" id="thin">thin to 24</button>
+        <button class="btn ghost small" id="clear">clear all</button>
+      </span>
+    </h2>
+    <div class="zonemap" id="zonemap"></div>
+    <div id="zones-notice"></div>
+    <div class="zones" id="zones"></div>
+  </section>
+
+  <section class="panel" id="detail-panel">
+    <h2><span>selected zone <span class="mono" id="detail-title"></span></span></h2>
+    <canvas class="wave" id="wave"></canvas>
+    <div class="grid cols-4" style="margin-top:10px">
+      <div class="field">
+        <label>loop start <span class="val" id="loop-start-val">–</span></label>
+        <input type="range" id="loop-start" min="0" max="1000" value="0">
+      </div>
+      <div class="field">
+        <label>loop end <span class="val" id="loop-end-val">–</span></label>
+        <input type="range" id="loop-end" min="0" max="1000" value="1000">
+      </div>
+      <div class="field">
+        <label>&nbsp;</label>
+        <div class="row">
+          <button class="btn secondary small" id="loop-refind">re-find loop</button>
+          <label class="check"><input type="checkbox" id="loop-on"> loop this zone</label>
+        </div>
+      </div>
+      <div class="field">
+        <label>&nbsp;</label>
+        <div class="row">
+          <button class="btn secondary small" id="audition">play</button>
+          <button class="btn secondary small hidden" id="rerecord">re-record</button>
+          <button class="btn ghost small danger" id="remove">remove zone</button>
+        </div>
+      </div>
+    </div>
+    <div class="keyboard" id="keyboard"></div>
+    <p class="faint" style="margin-top:6px;font-size:12px">play from the computer keyboard: <kbd>a</kbd>–<kbd>k</kbd> white keys, <kbd>w</kbd> <kbd>e</kbd> <kbd>t</kbd> <kbd>y</kbd> <kbd>u</kbd> black keys, <kbd>z</kbd>/<kbd>x</kbd> octave down/up</p>
+  </section>
+
+  <section class="panel">
+    <h2>export</h2>
+    <div class="row between">
+      <div class="row" style="gap:28px">
+        <div class="stat"><span class="big" id="stat-size">0 MB</span><span class="label">preset size</span></div>
+        <div class="stat"><span class="big" id="stat-longest">0 s</span><span class="label">longest sample (max 20 s)</span></div>
+        <div class="stat"><span class="big" id="stat-zones">0</span><span class="label">zones (max 24)</span></div>
+      </div>
+      <button class="btn accent" id="export" disabled>export .preset zip</button>
+    </div>
+    <div id="export-status" class="status" style="margin-top:8px"></div>
+    <p class="faint" style="margin-top:10px;font-size:12px">unzip, then copy the <span class="mono">name.preset</span> folder into <span class="mono">presets/</span> on the op-xy in disk mode (or via the field kit app).</p>
+  </section>
 
   <footer>
     <span>runs entirely in your browser — nothing is uploaded.</span>

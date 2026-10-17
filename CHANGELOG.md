@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.0 — stage 2: auto-sample
+
+- Auto-sample mode: choose a MIDI output and channel, an audio input and channel pick (1, 2 or the
+  1+2 pair), with a live input meter.
+- Test note measures round-trip latency, release tail, noise floor and peak; latency and release
+  can be overridden by hand.
+- Range planner: start / end note, step in semitones, optional snap to the C grid, hold time and
+  velocity; live zone count and estimated time; refuses more than 24 zones and offers the nearest
+  step or end note that fits; warns when hold + release exceeds 20 s.
+- Run records one continuous stream through an AudioWorklet and slices each note out, with
+  per-note progress and abort (sends all-notes-off).
+- Auto-sampled zones use the measured latency as the onset guard and the held portion of the note
+  as the loop search window; a zone can be re-recorded from the detail panel.
+- Preset name and note convention moved to a shared strip; processing / zones / export panels are
+  now shared by both modes.
+
 ## 0.1.0 — stage 1: import and export
 
 - Import a folder (or drag-and-drop a directory) of WAV / AIFF / FLAC samples, one note per file.
